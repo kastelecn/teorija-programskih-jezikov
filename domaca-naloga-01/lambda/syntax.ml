@@ -45,6 +45,23 @@ let rec subst sbst = function
       let sbst' = List.remove_assoc f (List.remove_assoc x sbst) in
       RecLambda (f, x, subst sbst' e)
   | Apply (e1, e2) -> Apply (subst sbst e1, subst sbst e2)
+  | Pair (e1, e2) -> Pair (subst sbst e1, subst sbst e2)
+  | Fst e -> begin match e with
+                |Pair (e1, e2) -> let e3 = Pair (subst subst e1, subst sbst e2) in Fst e3
+                |_ ->failwith ("fst exeption")
+  | Snd e -> begin match e with
+                |Pair (e1, e2) -> let e3 = Pair (subst sbst e1, subset sbst e2) in Snd e3
+                |_ ->failwith ("fst exeption")
+  | Nil -> Nil
+  | Cons (x, xs) -> Cons(subst sbst x, subst sbst xs)
+  | Match (e, e1, x, xs, e2) ->  Match (subst sbst e, subst sbst e1, x, xs, subst sbst e2)
+  
+  
+  (* begin match subst sbst e with
+                                  |Nil-> subst sbst e1
+                                  |Cons (x:: xs) ->subst sbst e2
+    end
+ *)
 
 
 let rec string_of_exp3 = function
