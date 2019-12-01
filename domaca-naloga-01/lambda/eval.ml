@@ -44,13 +44,25 @@ let rec eval_exp = function
       | _ -> failwith "Function expected"
       end
   | S.Pair (e1, e2) -> S.Pair(eval_exp e1, eval_exp e2)
-  | S.Fst e1 -> S.Fst(eval_exp e1)
-  | S.Snd e2 -> S.Snd(eval_exp e2)
+  | S.Fst e -> 
+      let v = eval_exp e in
+      begin match v with
+      |S.Pair (v1, v2)-> v1
+      |_  -> failwith "Pair expected"
+  | S.Snd e -> 
+    let v = eval_exp e in
+    begin match v with
+    |S.Pair (v1, v2)-> v2
+    |_  -> failwith "Pair expected"
   | S.Nil -> Nil
   | S.Cons (x, xs) -> S.Cons(eval_exp x, eval_exp xs)
   | S.Match (e, e1, x, xs, e2)-> begin match eval_exp e with
                                   |S.Nil -> eval_exp e1
-                                  |S.Cons -> eval_exp e2
+                                  |S.Cons (x1, xs1) -> 
+                                  let y = eval_exp x1
+                                  and ys = eval_exp xs1
+                                  in
+                                  eval_exp (S.subst [(x,y); (xs,ys)] e2)
                                   |_ -> failwith "List expression"
     end
 and eval_int e =
@@ -61,19 +73,24 @@ and eval_int e =
 let rec is_value = function
   | S.Int _ | S.Bool _ | S.Lambda _ | S.Nil | S.RecLambda _ -> true
   | S.Var _ | S.Plus _ | S.Minus _ | S.Times _ | S.Equal _ | S.Less _ | S.Greater _
-  | S.IfThenElse _ | S.Apply _ | S.Cons _ | S.Match _ |S.Fst _ | S.Dnd _ | S.Pair _ -> false
-(*   | S.Fst e -> begin match e with
-              |Pair (e1, e2) -> is_value e1 
-              |_ -> failwith "Fst exeption"
-  end
-  | S.Snd e -> begin match e with
-              |Pair (e1, e2) -> is_value e2 
-              |_ -> failwith "Fst exeption"
-  end
-  | S.Pair (e1, e2) -> is_value e1 && is_value e2 *)
+  | S.IfThenElse _ | S.Apply _  | S.Match _  -> false
+  | S.Pair (e1, e2) -> is_value e1 && is_value e2
+  | S.Cons (y,ys) -> is_value y && is_value ys
+  | S.Fst e -> begin
+    match e with
+    | S.Pair (e1,e2) -> is_value e1
+    |_ -> failwith "Pair expected"
+    end
+  | S.Snd e -> begin
+    match e with
+    | S.Pair (e1,e2) -> is_value e2
+    |_ -> failwith "Pair expected"
+    end
 
 let rec step = function
   | S.Var _ | S.Int _ | S.Bool _ | S.Lambda _ | S.Nil | S.RecLambda _ -> failwith "Expected a non-terminal expression"
+  | S.Pair (a, b) when (is_value a && is_value b) -> failwith "Expected a non-terminal expression"
+  | S.Cons (a, b) when (is_value a && is_value b) -> failwith "Expected a non-terminal expression"
   | S.Plus (S.Int n1, S.Int n2) -> S.Int (n1 + n2)
   | S.Plus (S.Int n1, e2) -> S.Plus (S.Int n1, step e2)
   | S.Plus (e1, e2) -> S.Plus (step e1, e2)
@@ -99,7 +116,6 @@ let rec step = function
   | S.Apply ((S.Lambda _ | S.RecLambda _) as f, e) -> S.Apply (f, step e)
   | S.Apply (e1, e2) -> S.Apply (step e1, e2)
   | S.Pair (e1, e2) -> begin match is_value e1, is value e2 with
-                        |true, true -> S.Pair (e1, e2)
                         |true, false -> S.Pair (e1, step e2)
                         |false, _ -> S.Pair (step e1, e2)
   | S.Fst e1 -> begin match e with
@@ -109,11 +125,23 @@ let rec step = function
   | S.Snd e1 -> begin match e with
                   |Pair (e1, e2) ->if  is_value e2 then e2 else step e2
                   |_ -> failwith "Fst exeption"
-end
+            end
   | S.Cons (x, xs) -> if is_value x then S.Cons (x, step xs) else S.Cons(step x, xs)
-  | S.Match (e, e1, x, xs, e2)-> begin match e with
-                                  |S.Nil -> step e1
-                                  |S.Cons(x, xs) -> step e2
+  | S.Match (e,e1,x,xs,e2) ->  begin
+    match is_value e with
+    |true ->  begin match e with
+      |S.Nil ->  begin match is_value e1 with
+        |true ->  e1
+        |false -> S.Match (e,step e1,x,xs,e2)
+        end
+      |S.Cons(y,ys) -> begin match is_value e2 with
+        |true ->  e2
+        |false ->S.Match (e,e1,x,xs,step (S.subst [(x,y); (xs,ys)] e2))
+        end
+      |_ -> failwith "List expected"
+      end
+    |false -> S.Match (step e,e1,x,xs,e2)
+    end
 end
   
 let big_step e =
